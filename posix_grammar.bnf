@@ -1,0 +1,175 @@
+program : linebreak complete_commands linebreak
+        | linebreak
+
+complete_commands : complete_commands newline_list complete_command
+                  | complete_command
+
+complete_command : list separator_op
+
+list : list separator_op and_or
+     | and_or
+
+and_or : pipeline
+       | and_or "&&" linebreak pipeline
+       | and_or "||" linebreak pipeline
+
+pipeline : pipe_sequence
+         | "!" pipe_sequence
+
+pipe_sequence : command
+              | pipe_sequence "|" linebreak command
+
+command : simple_command
+        | compound_command
+        | compound_command redirect_list
+        | function_definition
+
+compound_command : brace_group
+                 | subshell
+                 | for_clause
+                 | case_clause
+                 | if_clause
+                 | while_clause
+                 | until_clause
+
+subshell : "(" compound_list ")"
+
+compound_list : linebreak term
+              | linebreak term separator
+
+term : term separator and_or
+     | and_or
+
+for_clause : for name do_group
+           | for name sequential_sep do_group
+           | for name linebreak in sequential_sep do_group
+           | for name linebreak in wordlist sequential_sep do_group
+
+for : "for"
+
+name : NAME /* apply rule 5 */
+
+in : "in" /* apply rule 6 */
+
+wordlist : wordlist WORD ; FIXME
+         | WORD
+
+case_clause : case WORD linebreak in linebreak case_list esac
+            | case WORD linebreak in linebreak case_list_ns esac
+            | case WORD linebreak in linebreak esac
+
+case : "case"
+esac : "esac"
+
+case_list_ns : case_list case_item_ns
+             | case_item_ns
+
+case_list : case_list case_item
+          | case_item
+
+case_item_ns : pattern ")" linebreak
+             | pattern ")" compound_list
+             | "(" pattern ")" linebreak
+             | "(" pattern ")" compound_list
+
+case_item : pattern ")" linebreak dsemi linebreak
+          | pattern ")" compound_list dsemi linebreak
+          | "(" pattern ")" linebreak dsemi linebreak
+          | "(" pattern ")" compound_list dsemi linebreak
+
+dsemi : ";;"
+
+pattern : WORD             /* apply rule 4 */
+        | pattern "|" WORD /* don't apply rule 4 */
+
+if_clause : if compound_list then compound_list else_part fi
+          | if compound_list then compound_list fi
+
+else_part : elif compound_list then compound_list
+          | elif compound_list then compound_list else_part
+          | else compound_list
+
+if : "if"
+then : "then"
+fi : "fi"
+elif : "elif"
+else : "else"
+
+while_clause : while compound_list do_group
+
+while : "while"
+
+until_clause : until compound_list do_group
+
+until : "until"
+
+function_definition : fname "(" ")" linebreak function_body
+
+function_body : compound_command               /* apply rule 9 */
+              | compound_command redirect_list /* apply rule 9 */
+
+fname : NAME /* apply rule 8 */
+
+brace_group : "{" compound_list "}"
+
+do_group : do compound_list done /* apply rule 6 */
+
+do : "do"
+done : "done"
+
+simple_command : cmd_prefix cmd_word cmd_suffix
+               | cmd_prefix cmd_word
+               | cmd_prefix
+               | cmd_name cmd_suffix
+               | cmd_name
+
+cmd_name : WORD /* apply rule 7a */
+
+cmd_word : WORD /* apply rule 7b */
+
+cmd_prefix : io_redirect
+           | cmd_prefix io_redirect
+           | ASSIGNMENT_WORD
+           | cmd_prefix ASSIGNMENT_WORD
+
+cmd_suffix : io_redirect
+           | cmd_suffix io_redirect
+           | WORD
+           | cmd_suffix WORD
+
+redirect_list : io_redirect
+              | redirect_list io_redirect
+
+io_redirect : io_file
+            | IO_NUMBER io_file
+            | io_here
+            | IO_NUMBER io_here
+
+io_file : "<" filename
+        | "<&" filename
+        | ">" filename
+        | ">&" filename
+        | ">>" filename
+        | "<>" filename
+        | ">|" filename
+
+filename : WORD /* apply rule 2 */
+
+io_here : "<<" here_end
+
+here_end : WORD /* apply rule 3 */
+
+newline_list : NEWLINE
+             | newline_list NEWLINE
+
+linebreak : newline_list
+          | /* empty */
+
+separator_op : "&"
+             | ";"
+
+separator : separator_op linebreak
+          | newline_list
+
+sequential_sep : ";" linebreak
+               | newline_list
