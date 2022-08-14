@@ -10,6 +10,7 @@ const TokenKind = enum {
     lparen,
     rparen,
     single_quoted,
+    word,
 };
 
 const Token = union(TokenKind) {
@@ -22,11 +23,19 @@ const Token = union(TokenKind) {
     lparen: void,
     rparen: void,
     single_quoted: []const u8,
+    word: []const u8,
 };
 
 const LexerError = error{
     UnexpectedEndOfInput,
 };
+
+fn is_valid_word_char(c: u8) bool {
+    return switch (c) {
+        'a'...'z', 'A'...'Z', '_', '0'...'9' => true,
+        else => false,
+    };
+}
 
 const Lexer = struct {
     input: []const u8,
@@ -91,6 +100,19 @@ const Lexer = struct {
         return .greater;
     }
 
+    fn read_word(self: *Lexer) Token {
+        const start_index = self.index;
+        var c = self.current_char() catch unreachable;
+
+        while (true) {
+            self.advance();
+            c = self.current_char() catch break;
+            if (!is_valid_word_char(c)) break;
+        }
+
+        return Token{ .word = self.input[start_index..self.index] };
+    }
+
     pub fn next(self: *Lexer) LexerError!?Token {
         while ((self.current_char() catch return null) == ' ') : (self.advance()) {}
 
@@ -102,6 +124,7 @@ const Lexer = struct {
             '>' => self.read_greater(),
             '\'' => try self.read_single_quoted(),
             ' ' => try self.next(),
+            'a'...'z', 'A'...'Z', '_' => self.read_word(),
             else => unreachable,
         };
     }
@@ -119,14 +142,28 @@ const Lexer = struct {
     }
 };
 
+fn print_token(token: Token) void {
+    switch (token) {
+        .word => |s| std.log.info("WORD: {s}", .{s}),
+        .single_quoted => |s| std.log.info("SQUOTE: {s}", .{s}),
+        else => std.log.info("other: {any}", .{token}),
+    }
+}
+
+fn print_tokens(tokens: std.ArrayList(Token)) void {
+    for (tokens.items) |t| {
+        print_token(t);
+    }
+}
+
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var lexer = Lexer.init("  >     ");
-    var x = lexer.all_tokens(allocator);
-    std.log.info("result: {any}", .{x});
+    var lexer = Lexer.init("  >   abc def  ");
+    var x = try lexer.all_tokens(allocator);
+    print_tokens(x);
 }
 
 const expect = std.testing.expect;
@@ -197,4 +234,13 @@ test "whitespace is ignored" {
     defer tokens.deinit();
     const expected = [_]Token{ .dgreater, .less };
     try std.testing.expectEqualSlices(Token, expected[0..], tokens.items);
+}
+
+test "reading names (first stab)" {
+    var lexer = Lexer.init("foo bar");
+    const token = try lexer.next();
+    switch (token.?) {
+        .word => |str| try expect(std.mem.eql(u8, str, "foo")),
+        else => unreachable,
+    }
 }
