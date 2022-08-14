@@ -148,6 +148,18 @@ test "greater" {
     try expect(token.? == .greater);
 }
 
+test "left parenthesis" {
+    var lexer = Lexer.init("(");
+    const token = try lexer.next();
+    try expect(token.? == .lparen);
+}
+
+test "right parenthesis" {
+    var lexer = Lexer.init(")");
+    const token = try lexer.next();
+    try expect(token.? == .rparen);
+}
+
 test "double greater" {
     var lexer = Lexer.init(">>");
     const token = try lexer.next();
