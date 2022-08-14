@@ -102,9 +102,9 @@ const Lexer = struct {
     pub fn all_tokens(self: *Lexer, allocator: std.mem.Allocator) !std.ArrayList(Token) {
         var tokens = std.ArrayList(Token).init(allocator);
         while (true) {
-            const t = try self.next();
-            if (t != null) {
-                try tokens.append(t.?);
+            const maybe_token = try self.next();
+            if (maybe_token) |token| {
+                try tokens.append(token);
             } else break;
         }
 
