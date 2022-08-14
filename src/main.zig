@@ -24,6 +24,10 @@ const Token = union(TokenKind) {
     single_quoted: []const u8,
 };
 
+const LexerError = error{
+    UnexpectedEndOfInput,
+};
+
 const Lexer = struct {
     input: []const u8,
     index: u32,
@@ -35,9 +39,9 @@ const Lexer = struct {
         };
     }
 
-    fn current_char(self: Lexer) !u8 {
+    fn current_char(self: Lexer) LexerError!u8 {
         if (self.index >= self.input.len)
-            return error.EndOfInput;
+            return error.UnexpectedEndOfInput;
         return self.input[self.index];
     }
 
@@ -45,7 +49,7 @@ const Lexer = struct {
         self.index += 1;
     }
 
-    fn read_single_quoted(self: *Lexer) !Token {
+    fn read_single_quoted(self: *Lexer) LexerError!Token {
         // consume leading '
         self.advance();
 
@@ -87,7 +91,9 @@ const Lexer = struct {
         return .greater;
     }
 
-    pub fn next(self: *Lexer) !?Token {
+    pub fn next(self: *Lexer) LexerError!?Token {
+        while ((self.current_char() catch return null) == ' ') : (self.advance()) {}
+
         const c = self.current_char() catch return null;
         return switch (c) {
             '(' => .lparen,
@@ -95,6 +101,7 @@ const Lexer = struct {
             '<' => self.read_less(),
             '>' => self.read_greater(),
             '\'' => try self.read_single_quoted(),
+            ' ' => try self.next(),
             else => unreachable,
         };
     }
@@ -117,7 +124,7 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var lexer = Lexer.init("'a'<<''>'>'");
+    var lexer = Lexer.init("  >     ");
     var x = lexer.all_tokens(allocator);
     std.log.info("result: {any}", .{x});
 }
@@ -182,4 +189,12 @@ test "single quotes with content" {
         .single_quoted => |str| try expect(std.mem.eql(u8, str, "foo bar")),
         else => unreachable,
     }
+}
+
+test "whitespace is ignored" {
+    var lexer = Lexer.init(" >>  <  ");
+    const tokens = try lexer.all_tokens(std.testing.allocator);
+    defer tokens.deinit();
+    const expected = [_]Token{ .dgreater, .less };
+    try std.testing.expectEqualSlices(Token, expected[0..], tokens.items);
 }
