@@ -59,15 +59,32 @@ const Lexer = struct {
         return Token{ .single_quoted = self.input[start_index..end_index] };
     }
 
+    /// TODO: find common abstraction for read_less and read_greater
     fn read_less(self: *Lexer) Token {
         self.advance();
 
         if (self.index < self.input.len and (self.current_char() catch unreachable) == '<') {
             self.advance();
+
+            if (self.index < self.input.len and (self.current_char() catch unreachable) == '-') {
+                return .dlessdash;
+            }
+
             return .dless;
-        } else {
-            return .less;
         }
+
+        return .less;
+    }
+
+    fn read_greater(self: *Lexer) Token {
+        self.advance();
+
+        if (self.index < self.input.len and (self.current_char() catch unreachable) == '>') {
+            self.advance();
+            return .dgreater;
+        }
+
+        return .greater;
     }
 
     pub fn next(self: *Lexer) !?Token {
@@ -76,6 +93,7 @@ const Lexer = struct {
             '(' => .lparen,
             ')' => .rparen,
             '<' => self.read_less(),
+            '>' => self.read_greater(),
             '\'' => try self.read_single_quoted(),
             else => unreachable,
         };
@@ -99,7 +117,7 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var lexer = Lexer.init("'a'<<''");
+    var lexer = Lexer.init("'a'<<''>'>'");
     var x = lexer.all_tokens(allocator);
     std.log.info("result: {any}", .{x});
 }
@@ -110,6 +128,30 @@ test "less" {
     var lexer = Lexer.init("<");
     const token = try lexer.next();
     try expect(token.? == .less);
+}
+
+test "double less" {
+    var lexer = Lexer.init("<<");
+    const token = try lexer.next();
+    try expect(token.? == .dless);
+}
+
+test "double less dash" {
+    var lexer = Lexer.init("<<-");
+    const token = try lexer.next();
+    try expect(token.? == .dlessdash);
+}
+
+test "greater" {
+    var lexer = Lexer.init(">");
+    const token = try lexer.next();
+    try expect(token.? == .greater);
+}
+
+test "double greater" {
+    var lexer = Lexer.init(">>");
+    const token = try lexer.next();
+    try expect(token.? == .dgreater);
 }
 
 test "empty single quotes" {
