@@ -161,7 +161,6 @@ const Lexer = struct {
             '<' => self.read_less(),
             '>' => self.read_greater(),
             '\'' => try self.read_single_quoted(),
-            ' ' => try self.next(),
             'a'...'z', 'A'...'Z', '_' => self.read_word(),
             else => unreachable,
         };
