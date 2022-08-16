@@ -11,6 +11,12 @@ const TokenKind = enum {
     rparen,
     single_quoted,
     word,
+    keyword,
+};
+
+const Keyword = enum {
+    case,
+    esac,
 };
 
 const Token = union(TokenKind) {
@@ -24,6 +30,7 @@ const Token = union(TokenKind) {
     rparen: void,
     single_quoted: []const u8,
     word: []const u8,
+    keyword: Keyword,
 };
 
 const LexerError = error{
@@ -36,6 +43,11 @@ fn is_valid_word_char(c: u8) bool {
         else => false,
     };
 }
+
+const keywords = std.ComptimeStringMap(Keyword, .{
+    .{ "case", .case },
+    .{ "esac", .esac },
+});
 
 const Lexer = struct {
     input: []const u8,
@@ -110,7 +122,11 @@ const Lexer = struct {
             if (!is_valid_word_char(c)) break;
         }
 
-        return Token{ .word = self.input[start_index..self.index] };
+        const content = self.input[start_index..self.index];
+        return if (keywords.get(content)) |v|
+            Token{ .keyword = v }
+        else
+            Token{ .word = content };
     }
 
     pub fn next(self: *Lexer) LexerError!?Token {
@@ -236,11 +252,20 @@ test "whitespace is ignored" {
     try std.testing.expectEqualSlices(Token, expected[0..], tokens.items);
 }
 
-test "reading names (first stab)" {
+test "reading names that are not keywords" {
     var lexer = Lexer.init("foo bar");
     const token = try lexer.next();
     switch (token.?) {
         .word => |str| try expect(std.mem.eql(u8, str, "foo")),
+        else => unreachable,
+    }
+}
+
+test "reading keywords" {
+    var lexer = Lexer.init("case");
+    const token = try lexer.next();
+    switch (token.?) {
+        .keyword => |kw| try expect(kw == .case),
         else => unreachable,
     }
 }
