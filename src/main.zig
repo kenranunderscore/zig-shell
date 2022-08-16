@@ -265,6 +265,9 @@ test "reading keywords" {
     var lexer = Lexer.init("case");
     const token = try lexer.next();
     switch (token.?) {
+        // NOTE: expecting a different value here leads to the
+        // expectEqualSlices above leaking some unexpectedeof error
+        // here???
         .keyword => |kw| try expect(kw == .case),
         else => unreachable,
     }
