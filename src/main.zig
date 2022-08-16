@@ -248,8 +248,8 @@ test "whitespace is ignored" {
     var lexer = Lexer.init(" >>  <  ");
     const tokens = try lexer.all_tokens(std.testing.allocator);
     defer tokens.deinit();
-    const expected = [_]Token{ .dgreater, .less };
-    try std.testing.expectEqualSlices(Token, expected[0..], tokens.items);
+    const expected = &[_]Token{ .dgreater, .less };
+    try std.testing.expectEqualSlices(Token, expected, tokens.items);
 }
 
 test "reading names that are not keywords" {
