@@ -17,6 +17,17 @@ const TokenKind = enum {
 const Keyword = enum {
     case,
     esac,
+    @"for",
+    in,
+    do,
+    done,
+    @"if",
+    @"then",
+    @"else",
+    @"elif",
+    @"fi",
+    until,
+    @"while",
 };
 
 const Token = union(TokenKind) {
@@ -47,6 +58,17 @@ fn is_valid_word_char(c: u8) bool {
 const keywords = std.ComptimeStringMap(Keyword, .{
     .{ "case", .case },
     .{ "esac", .esac },
+    .{ "for", .@"for" },
+    .{ "in", .in },
+    .{ "do", .do },
+    .{ "done", .done },
+    .{ "if", .@"if" },
+    .{ "then", .@"then" },
+    .{ "else", .@"else" },
+    .{ "elif", .@"elif" },
+    .{ "fi", .@"fi" },
+    .{ "until", .until },
+    .{ "while", .@"while" },
 });
 
 const Lexer = struct {
@@ -262,13 +284,32 @@ test "reading names that are not keywords" {
 }
 
 test "reading keywords" {
-    var lexer = Lexer.init("case");
-    const token = try lexer.next();
-    switch (token.?) {
-        // NOTE: expecting a different value here leads to the
-        // expectEqualSlices above leaking some unexpectedeof error
-        // here???
-        .keyword => |kw| try expect(kw == .case),
-        else => unreachable,
+    var lexer =
+        Lexer.init("case esac for in do done if then else elif fi until while");
+    const tokens = try lexer.all_tokens(std.testing.allocator);
+    defer tokens.deinit();
+
+    const expected_keywords = &[_]Keyword{
+        .case,
+        .esac,
+        .@"for",
+        .in,
+        .do,
+        .done,
+        .@"if",
+        .@"then",
+        .@"else",
+        .@"elif",
+        .@"fi",
+        .until,
+        .@"while",
+    };
+
+    var i: usize = 0;
+    while (i < expected_keywords.len) : (i += 1) {
+        switch (tokens.items[i]) {
+            .keyword => |kw| try expect(kw == expected_keywords[i]),
+            else => unreachable,
+        }
     }
 }
