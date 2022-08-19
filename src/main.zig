@@ -10,6 +10,7 @@ const TokenKind = enum {
     lparen,
     rparen,
     single_quoted,
+    double_quoted,
     word,
     keyword,
 };
@@ -40,6 +41,7 @@ const Token = union(TokenKind) {
     lparen: void,
     rparen: void,
     single_quoted: []const u8,
+    double_quoted: []const u8,
     word: []const u8,
     keyword: Keyword,
 };
@@ -92,18 +94,28 @@ const Lexer = struct {
         self.index += 1;
     }
 
-    fn read_single_quoted(self: *Lexer) LexerError!Token {
-        // consume leading '
+    fn read_until(self: *Lexer, symbol: u8) LexerError![]const u8 {
+        // consume leading symbol
         self.advance();
 
         const start_index = self.index;
-        while ((try self.current_char()) != '\'') : (self.advance()) {}
+        while ((try self.current_char()) != symbol) : (self.advance()) {}
         const end_index = self.index;
 
-        // advance once more to consume the closing '
+        // advance once more to consume the closing symbol
         self.advance();
 
-        return Token{ .single_quoted = self.input[start_index..end_index] };
+        return self.input[start_index..end_index];
+    }
+
+    fn read_single_quoted(self: *Lexer) LexerError!Token {
+        const content = try self.read_until('\'');
+        return Token{ .single_quoted = content };
+    }
+
+    fn read_double_quoted(self: *Lexer) LexerError!Token {
+        const content = try self.read_until('\"');
+        return Token{ .double_quoted = content };
     }
 
     /// TODO: find common abstraction for read_less and read_greater
@@ -161,6 +173,7 @@ const Lexer = struct {
             '<' => self.read_less(),
             '>' => self.read_greater(),
             '\'' => try self.read_single_quoted(),
+            '\"' => try self.read_double_quoted(),
             'a'...'z', 'A'...'Z', '_' => self.read_word(),
             else => unreachable,
         };
@@ -261,6 +274,24 @@ test "single quotes with content" {
     const token = try lexer.next();
     switch (token.?) {
         .single_quoted => |str| try expect(std.mem.eql(u8, str, "foo bar")),
+        else => unreachable,
+    }
+}
+
+test "empty double quotes" {
+    var lexer = Lexer.init("\"\"");
+    const token = try lexer.next();
+    switch (token.?) {
+        .double_quoted => |str| try expect(std.mem.eql(u8, str, "")),
+        else => unreachable,
+    }
+}
+
+test "double quotes with content" {
+    var lexer = Lexer.init("\"foo bar\"");
+    const token = try lexer.next();
+    switch (token.?) {
+        .double_quoted => |str| try expect(std.mem.eql(u8, str, "foo bar")),
         else => unreachable,
     }
 }
