@@ -48,10 +48,8 @@ pub const Token = union(TokenKind) {
     eof: void,
 };
 
-// TODO: only EmptyInput is possible to be returned at the top level.
 const LexerError = error{
-    EOF,
-    EmptyInput,
+    MissingDelimiter,
 };
 
 fn isValidWordChar(c: u8) bool {
@@ -82,7 +80,7 @@ pub const Lexer = struct {
     index: u32,
     is_initial: bool,
 
-    pub fn init(input: []const u8) LexerError!Lexer {
+    pub fn init(input: []const u8) !Lexer {
         return if (input.len == 0) error.EmptyInput else Lexer{
             .input = input,
             .index = 0,
@@ -99,7 +97,7 @@ pub const Lexer = struct {
     }
 
     // TODO(Johannes): add forceAdvance
-    fn advance(self: *Lexer) LexerError!void {
+    fn advance(self: *Lexer) !void {
         if (self.index + 1 >= self.input.len)
             return error.EOF;
         self.index += 1;
@@ -107,11 +105,11 @@ pub const Lexer = struct {
 
     fn readUntil(self: *Lexer, symbol: u8) LexerError![]const u8 {
         // consume leading symbol
-        try self.advance();
+        self.advance() catch return error.MissingDelimiter;
 
         const start_index = self.index;
         while (self.currentChar() != symbol) {
-            try self.advance();
+            self.advance() catch return error.MissingDelimiter;
         }
 
         return self.input[start_index..self.index];
@@ -373,4 +371,18 @@ test "reading keywords" {
             else => unreachable,
         }
     }
+}
+
+test "lexer initialization fails if input is empty" {
+    try std.testing.expectError(error.EmptyInput, Lexer.init(""));
+}
+
+test "undelimited (empty) string leads to error" {
+    var lexer = try Lexer.init("\"");
+    try std.testing.expectError(error.MissingDelimiter, lexer.next());
+}
+
+test "undelimited non-empty string leads to error" {
+    var lexer = try Lexer.init("\"abcpa def");
+    try std.testing.expectError(error.MissingDelimiter, lexer.next());
 }
