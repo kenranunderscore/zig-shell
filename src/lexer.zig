@@ -49,7 +49,8 @@ pub const Token = union(TokenKind) {
 };
 
 const LexerError = error{
-    MissingDelimiter,
+    MissingSingleQuote,
+    MissingDoubleQuote,
 };
 
 fn isValidWordChar(c: u8) bool {
@@ -106,7 +107,7 @@ pub const Lexer = struct {
         self.advance() catch unreachable;
     }
 
-    fn readUntil(self: *Lexer, symbol: u8) LexerError![]const u8 {
+    fn readUntil(self: *Lexer, symbol: u8) ![]const u8 {
         // consume leading symbol
         self.advance() catch return error.MissingDelimiter;
 
@@ -119,12 +120,12 @@ pub const Lexer = struct {
     }
 
     fn readSingleQuoted(self: *Lexer) LexerError!Token {
-        const content = try self.readUntil('\'');
+        const content = self.readUntil('\'') catch return error.MissingSingleQuote;
         return Token{ .single_quoted = content };
     }
 
     fn readDoubleQuoted(self: *Lexer) LexerError!Token {
-        const content = try self.readUntil('\"');
+        const content = self.readUntil('\"') catch return error.MissingDoubleQuote;
         return Token{ .double_quoted = content };
     }
 
@@ -382,10 +383,20 @@ test "lexer initialization fails if input is empty" {
 
 test "undelimited (empty) string leads to error" {
     var lexer = try Lexer.init("\"");
-    try std.testing.expectError(error.MissingDelimiter, lexer.next());
+    try std.testing.expectError(error.MissingDoubleQuote, lexer.next());
 }
 
 test "undelimited non-empty string leads to error" {
     var lexer = try Lexer.init("\"abcpa def");
-    try std.testing.expectError(error.MissingDelimiter, lexer.next());
+    try std.testing.expectError(error.MissingDoubleQuote, lexer.next());
+}
+
+test "undelimited (empty) single quote leads to error" {
+    var lexer = try Lexer.init("\'");
+    try std.testing.expectError(error.MissingSingleQuote, lexer.next());
+}
+
+test "undelimited non-empty single quote leads to error" {
+    var lexer = try Lexer.init("\'abcpa def");
+    try std.testing.expectError(error.MissingSingleQuote, lexer.next());
 }
