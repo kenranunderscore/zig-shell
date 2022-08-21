@@ -13,6 +13,7 @@ pub const TokenKind = enum {
     double_quoted,
     word,
     keyword,
+    eof,
 };
 
 pub const Keyword = enum {
@@ -44,10 +45,13 @@ pub const Token = union(TokenKind) {
     double_quoted: []const u8,
     word: []const u8,
     keyword: Keyword,
+    eof: void,
 };
 
+// TODO: only EmptyInput is possible to be returned at the top level.
 const LexerError = error{
-    UnexpectedEndOfInput,
+    EOF,
+    EmptyInput,
 };
 
 fn isValidWordChar(c: u8) bool {
@@ -76,36 +80,41 @@ const keywords = std.ComptimeStringMap(Keyword, .{
 pub const Lexer = struct {
     input: []const u8,
     index: u32,
+    is_initial: bool,
 
-    pub fn init(input: []const u8) Lexer {
-        return Lexer{
+    pub fn init(input: []const u8) LexerError!Lexer {
+        return if (input.len == 0) error.EmptyInput else Lexer{
             .input = input,
             .index = 0,
+            .is_initial = true,
         };
     }
 
-    fn currentChar(self: Lexer) LexerError!u8 {
-        if (self.index >= self.input.len)
-            return error.UnexpectedEndOfInput;
+    fn currentChar(self: Lexer) u8 {
         return self.input[self.index];
     }
 
-    fn advance(self: *Lexer) void {
+    fn peek(self: Lexer) ?u8 {
+        return if (self.index + 1 >= self.input.len) null else self.input[self.index + 1];
+    }
+
+    // TODO(Johannes): add forceAdvance
+    fn advance(self: *Lexer) LexerError!void {
+        if (self.index + 1 >= self.input.len)
+            return error.EOF;
         self.index += 1;
     }
 
     fn readUntil(self: *Lexer, symbol: u8) LexerError![]const u8 {
         // consume leading symbol
-        self.advance();
+        try self.advance();
 
         const start_index = self.index;
-        while ((try self.currentChar()) != symbol) : (self.advance()) {}
-        const end_index = self.index;
+        while (self.currentChar() != symbol) {
+            try self.advance();
+        }
 
-        // advance once more to consume the closing symbol
-        self.advance();
-
-        return self.input[start_index..end_index];
+        return self.input[start_index..self.index];
     }
 
     fn readSingleQuoted(self: *Lexer) LexerError!Token {
@@ -120,53 +129,61 @@ pub const Lexer = struct {
 
     /// TODO: find common abstraction for read_less and read_greater
     fn readLess(self: *Lexer) Token {
-        self.advance();
-
-        if (self.index < self.input.len and (self.currentChar() catch unreachable) == '<') {
-            self.advance();
-
-            if (self.index < self.input.len and (self.currentChar() catch unreachable) == '-') {
-                return .dlessdash;
+        if (self.peek()) |c| {
+            if (c == '<') {
+                self.advance() catch unreachable;
+                if (self.peek()) |d| {
+                    if (d == '-') {
+                        self.advance() catch unreachable;
+                        return .dlessdash;
+                    }
+                }
+                return .dless;
             }
-
-            return .dless;
         }
-
         return .less;
     }
 
     fn readGreater(self: *Lexer) Token {
-        self.advance();
-
-        if (self.index < self.input.len and (self.currentChar() catch unreachable) == '>') {
-            self.advance();
-            return .dgreater;
+        if (self.peek()) |c| {
+            if (c == '>') {
+                self.advance() catch unreachable;
+                return .dgreater;
+            }
         }
-
         return .greater;
     }
 
     fn readWord(self: *Lexer) Token {
         const start_index = self.index;
-        var c = self.currentChar() catch unreachable;
 
         while (true) {
-            self.advance();
-            c = self.currentChar() catch break;
-            if (!isValidWordChar(c)) break;
+            if (self.peek()) |c| {
+                if (isValidWordChar(c)) {
+                    self.advance() catch unreachable;
+                } else break;
+            } else break;
         }
 
-        const content = self.input[start_index..self.index];
+        const content = self.input[start_index .. self.index + 1];
         return if (keywords.get(content)) |v|
             Token{ .keyword = v }
         else
             Token{ .word = content };
     }
 
-    pub fn next(self: *Lexer) LexerError!?Token {
-        while ((self.currentChar() catch return null) == ' ') : (self.advance()) {}
+    pub fn next(self: *Lexer) LexerError!Token {
+        if (self.is_initial) {
+            self.is_initial = false;
+        } else {
+            self.advance() catch return .eof;
+        }
 
-        const c = self.currentChar() catch return null;
+        while (self.currentChar() == ' ') {
+            self.advance() catch return .eof;
+        }
+
+        const c = self.currentChar();
         return switch (c) {
             '(' => .lparen,
             ')' => .rparen,
@@ -181,11 +198,11 @@ pub const Lexer = struct {
 
     pub fn allTokens(self: *Lexer, allocator: std.mem.Allocator) !std.ArrayList(Token) {
         var tokens = std.ArrayList(Token).init(allocator);
+
         while (true) {
-            const maybe_token = try self.next();
-            if (maybe_token) |token| {
-                try tokens.append(token);
-            } else break;
+            const token = try self.next();
+            try tokens.append(token);
+            if (token == .eof) break;
         }
 
         return tokens;
@@ -209,103 +226,127 @@ pub fn printTokens(tokens: std.ArrayList(Token)) void {
 const expect = std.testing.expect;
 
 test "less" {
-    var lexer = Lexer.init("<");
+    var lexer = try Lexer.init("<");
     const token = try lexer.next();
-    try expect(token.? == .less);
+    try expect(token == .less);
 }
 
 test "double less" {
-    var lexer = Lexer.init("<<");
+    var lexer = try Lexer.init("<<");
     const token = try lexer.next();
-    try expect(token.? == .dless);
+    try expect(token == .dless);
 }
 
 test "double less dash" {
-    var lexer = Lexer.init("<<-");
+    var lexer = try Lexer.init("<<-");
     const token = try lexer.next();
-    try expect(token.? == .dlessdash);
+    try expect(token == .dlessdash);
 }
 
 test "greater" {
-    var lexer = Lexer.init(">");
+    var lexer = try Lexer.init(">");
     const token = try lexer.next();
-    try expect(token.? == .greater);
+    try expect(token == .greater);
 }
 
 test "left parenthesis" {
-    var lexer = Lexer.init("(");
+    var lexer = try Lexer.init("(");
     const token = try lexer.next();
-    try expect(token.? == .lparen);
+    try expect(token == .lparen);
 }
 
 test "right parenthesis" {
-    var lexer = Lexer.init(")");
+    var lexer = try Lexer.init(")");
     const token = try lexer.next();
-    try expect(token.? == .rparen);
+    try expect(token == .rparen);
 }
 
 test "double greater" {
-    var lexer = Lexer.init(">>");
+    var lexer = try Lexer.init(">>");
     const token = try lexer.next();
-    try expect(token.? == .dgreater);
+    try expect(token == .dgreater);
 }
 
 test "empty single quotes" {
-    var lexer = Lexer.init("''");
+    var lexer = try Lexer.init("''");
     const token = try lexer.next();
-    switch (token.?) {
+    switch (token) {
         .single_quoted => |str| try expect(std.mem.eql(u8, str, "")),
         else => unreachable,
     }
 }
 
 test "single quotes with content" {
-    var lexer = Lexer.init("'foo bar'");
+    var lexer = try Lexer.init("'foo bar'");
     const token = try lexer.next();
-    switch (token.?) {
+    switch (token) {
         .single_quoted => |str| try expect(std.mem.eql(u8, str, "foo bar")),
         else => unreachable,
     }
 }
 
 test "empty double quotes" {
-    var lexer = Lexer.init("\"\"");
+    var lexer = try Lexer.init("\"\"");
     const token = try lexer.next();
-    switch (token.?) {
+    switch (token) {
         .double_quoted => |str| try expect(std.mem.eql(u8, str, "")),
         else => unreachable,
     }
 }
 
 test "double quotes with content" {
-    var lexer = Lexer.init("\"foo bar\"");
+    var lexer = try Lexer.init("\"foo bar\"");
     const token = try lexer.next();
-    switch (token.?) {
+    switch (token) {
         .double_quoted => |str| try expect(std.mem.eql(u8, str, "foo bar")),
         else => unreachable,
     }
 }
 
+test "whitespace before name is ignored" {
+    var lexer = try Lexer.init(" a");
+    const token = try lexer.next();
+    switch (token) {
+        .word => |str| try expect(std.mem.eql(u8, str, "a")),
+        else => unreachable,
+    }
+}
+
+test "whitespace after name is ignored" {
+    var lexer = try Lexer.init("a ");
+    const token = try lexer.next();
+    switch (token) {
+        .word => |str| try expect(std.mem.eql(u8, str, "a")),
+        else => unreachable,
+    }
+}
+
 test "whitespace is ignored" {
-    var lexer = Lexer.init(" >>  <  ");
+    var lexer = try Lexer.init(">");
     const tokens = try lexer.allTokens(std.testing.allocator);
     defer tokens.deinit();
-    const expected = &[_]Token{ .dgreater, .less };
+    const expected = &[_]Token{ .greater, .eof };
     try std.testing.expectEqualSlices(Token, expected, tokens.items);
 }
 
 test "reading names that are not keywords" {
-    var lexer = Lexer.init("foo bar");
+    var lexer = try Lexer.init("foo bar");
     const token = try lexer.next();
-    switch (token.?) {
+    switch (token) {
         .word => |str| try expect(std.mem.eql(u8, str, "foo")),
         else => unreachable,
     }
 }
 
+test "whitespace-only string returns .eof" {
+    var lexer = try Lexer.init("    ");
+    const token = try lexer.next();
+    try expect(token.eof == {});
+}
+
 test "reading keywords" {
     var lexer =
-        Lexer.init("case esac for in do done if then else elif fi until while");
+        try Lexer.init("case esac for in do done if then else elif fi until while");
     const tokens = try lexer.allTokens(std.testing.allocator);
     defer tokens.deinit();
 

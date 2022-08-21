@@ -7,7 +7,7 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var lexer = Lexer.init("  >   abc def  ");
+    var lexer = try Lexer.init("  >   abc def  ");
     var x = try lexer.allTokens(allocator);
     l.printTokens(x);
 }
