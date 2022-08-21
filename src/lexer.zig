@@ -96,11 +96,14 @@ pub const Lexer = struct {
         return if (self.index + 1 >= self.input.len) null else self.input[self.index + 1];
     }
 
-    // TODO(Johannes): add forceAdvance
     fn advance(self: *Lexer) !void {
         if (self.index + 1 >= self.input.len)
             return error.EOF;
         self.index += 1;
+    }
+
+    fn forceAdvance(self: *Lexer) void {
+        self.advance() catch unreachable;
     }
 
     fn readUntil(self: *Lexer, symbol: u8) LexerError![]const u8 {
@@ -129,10 +132,10 @@ pub const Lexer = struct {
     fn readLess(self: *Lexer) Token {
         if (self.peek()) |c| {
             if (c == '<') {
-                self.advance() catch unreachable;
+                self.forceAdvance();
                 if (self.peek()) |d| {
                     if (d == '-') {
-                        self.advance() catch unreachable;
+                        self.forceAdvance();
                         return .dlessdash;
                     }
                 }
@@ -145,7 +148,7 @@ pub const Lexer = struct {
     fn readGreater(self: *Lexer) Token {
         if (self.peek()) |c| {
             if (c == '>') {
-                self.advance() catch unreachable;
+                self.forceAdvance();
                 return .dgreater;
             }
         }
@@ -158,7 +161,7 @@ pub const Lexer = struct {
         while (true) {
             if (self.peek()) |c| {
                 if (isValidWordChar(c)) {
-                    self.advance() catch unreachable;
+                    self.forceAdvance();
                 } else break;
             } else break;
         }
