@@ -13,6 +13,7 @@ pub const TokenKind = enum {
     double_quoted,
     word,
     keyword,
+    newline,
     eof,
 };
 
@@ -45,6 +46,7 @@ pub const Token = union(TokenKind) {
     double_quoted: []const u8,
     word: []const u8,
     keyword: Keyword,
+    newline: void,
     eof: void,
 };
 
@@ -187,6 +189,7 @@ pub const Lexer = struct {
 
         const c = self.currentChar();
         return switch (c) {
+            '\n' => .newline,
             '(' => .lparen,
             ')' => .rparen,
             '<' => self.readLess(),
@@ -343,7 +346,7 @@ test "reading names that are not keywords" {
 test "whitespace-only string returns .eof" {
     var lexer = try Lexer.init("    ");
     const token = try lexer.next();
-    try expect(token.eof == {});
+    try expect(token == .eof);
 }
 
 test "reading keywords" {
@@ -399,4 +402,19 @@ test "undelimited (empty) single quote leads to error" {
 test "undelimited non-empty single quote leads to error" {
     var lexer = try Lexer.init("\'abcpa def");
     try std.testing.expectError(error.MissingSingleQuote, lexer.next());
+}
+
+test "newline" {
+    var lexer = try Lexer.init(
+        \\foo
+        \\bar
+    );
+    var token = try lexer.next();
+    try expect(token == .word);
+
+    token = try lexer.next();
+    try expect(token == .newline);
+
+    token = try lexer.next();
+    try expect(token == .word);
 }
