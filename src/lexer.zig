@@ -9,6 +9,8 @@ pub const TokenKind = enum {
     dgreater,
     lparen,
     rparen,
+    lbrace,
+    rbrace,
     single_quoted,
     double_quoted,
     word,
@@ -42,6 +44,8 @@ pub const Token = union(TokenKind) {
     dgreater: void,
     lparen: void,
     rparen: void,
+    lbrace: void,
+    rbrace: void,
     single_quoted: []const u8,
     double_quoted: []const u8,
     word: []const u8,
@@ -192,6 +196,8 @@ pub const Lexer = struct {
             '\n' => .newline,
             '(' => .lparen,
             ')' => .rparen,
+            '{' => .lbrace,
+            '}' => .rbrace,
             '<' => self.readLess(),
             '>' => self.readGreater(),
             '\'' => try self.readSingleQuoted(),
@@ -417,4 +423,16 @@ test "newline" {
 
     token = try lexer.next();
     try expect(token == .word);
+}
+
+test "left brace" {
+    var lexer = try Lexer.init("{");
+    const token = try lexer.next();
+    try expect(token == .lbrace);
+}
+
+test "right brace" {
+    var lexer = try Lexer.init("}");
+    const token = try lexer.next();
+    try expect(token == .rbrace);
 }
